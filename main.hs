@@ -18,30 +18,59 @@ data Term = Var Id
            | AField Term Id
 
 
-data Method = Method Id Term -- Term --> Lambda
-
-data Decl= ClassDecl Id [Id] [Method]
-           | FunDecl Id Term
-
 data Definition = Def Id Term
-
-type Program = [Definition]
-
+data Method  = Method Id Term -- Term --> Lambda
+data Decl = ClassDecl Id [Id] [Method]
+           | FunDecl  Id Term
 
 data Value = Num Double
             | Ref Int  -- referencia pra um obj
             | Fun (Value -> State -> (Value, State))
             | Error
 
-type State = [(Id, Value)]
+type Program = [Definition]
 type Environment = [(Id, Value)]
+type State = [(Id, Value)]
 type Object = (Id, State) -- classe, estado
 type Heap = [(Value, Object)] -- endereço, objeto
 
--- heap -> conjunto de pares endereco objeto -> tem que ter um id classe e estado
-
 
 ------------- interpretador -------------------------
+
+int :: Environment -> State -> Heap -> Term -> (Value, State, Heap)  --tem que alterar a heap tb
+int e s h (Var id)     = (search id s, s, h)
+int e s h (Lit num)    = (Num num,     s, h)
+
+int e s h (Sum  t1 t2) = (somaVal n1 n2, s, h)
+                        where (n1, _) = int e s h t1
+                        where (n2, _) = int e s h t2
+int e s h (Mult t1 t2) = (multVal n1, n2, s, h)
+                        where (n1, _) = int e s h t1
+                        where (n2, _) = int e s h t2
+
+int e s h (AField t1 id)    = search id os  --retorno o valor do campo do objeto na heap
+                            where (_, os)     = getObj rf h1
+                            where (rf, s1 h1) = int e s h t1
+
+int e s h (Atr (Var id) t2) = (v, wr (id, v) s1, h1)
+                            where (v, s1, h1) = int e s h t2
+int e s h (Atr (AField t1 id) t2) = (v, s2, wrh  rf (id, v) h2)
+                            where (rf, s2 h2) = int e s1 h1 t1
+                            where (v, s1, h1) = int e s  h  t2
+
+--        | Lam Id Term
+    --    | Apl Term Term
+    --    | Seq Term Term
+    --    | While Term Term
+    --    | MethodCall Term Id Term
+    --    | If Term Term Term
+    --    | New Id
+    --    | InstanceOf Term Id
+    --    | For Id Term Term Term
+    --    | This
+
+
+--------- funções auxiliares ---------------
 
 search :: Id -> State -> Value
 search i [] = Error
@@ -73,53 +102,6 @@ wrh (Ref i) v [] = [] -- se não achar a ref, não faz nada?
 wrh (Ref i) v ((j, (c, s)):l) | i == j     = (j, (c, wr v s)) : l 
                               | otherwise  = (j, (c, s)) : (wrh (Ref i) v l)
 
-
-int :: Environment -> State -> Heap -> Term -> (Value, State, Heap)  --tem que alterar a heap tb
-int e s h (Var id)     = (search id s, s, h)
-int e s h (Lit num)    = (Num num,     s, h)
-
-int e s h (Sum  t1 t2) = (somaVal n1 n2, s, h)
-                        where (n1, _) = int e s h t1
-                        where (n2, _) = int e s h t2
-int e s h (Mult t1 t2) = (multVal n1, n2, s, h)
-                        where (n1, _) = int e s h t1
-                        where (n2, _) = int e s h t2
-
-int e s h (AField t1 id)    = search id os  --retorno o valor do campo do objeto na heap
-                            where (_, os)     = getObj rf h1
-                            where (rf, s1 h1) = int e s h t1
-
-int e s h (Atr (Var id) t2) = (v, wr (id, v) s1, h1)
-                            where (v, s1, h1) = int e s h t2
-int e s h (Atr (AField t1 id) t2) = (v, s2, wrh  rf (id, v) h2)
-                            where (rf, s2 h2) = int e s1 h1 t1
-                            where (v, s1, h1) = int e s  h  t2
-
---        | Lam Id Term
-    --    | Apl Term Term
-    --    | Atr Term Term
-    --    | Seq Term Term
-    --    | While Term Term
-    --    | MethodCall Term Id Term
-    --    | If Term Term Term
-    --    | New Id
-    --    | InstanceOf Term Id
-    --    | For Id Term Term Term
-    --    | This
-    --    | AField Term Id
-
-
------- Funções auxiliares ---
-isVar :: Term -> Bool
-isVar (Var _)       = True
-isVar _             = False
-
-isAField :: Term -> Bool
-isField (AField _ _) = True
-isField _            = False
-
-
-
 ---------- instancias de show ---------------
 instance Show Term where
     show (Var id) = id
@@ -137,6 +119,7 @@ instance Show Term where
     show (InstanceOf t id) = "InstanceOf(" ++ (show t) ++ ", " ++ id ++ ")"
     show (For id t1 t2 t3) = "for " ++ id ++ " in range(" ++ (show t1) ++ ", " ++ (show t2) ++ "){\n" ++ (show t3) ++ "}\n"
     show (This) = "this"
+    show (AField t id) = (show t) ++ "." ++ id
 
 instance Show Definition where
     show (Def id termo)  = "def " ++ (id) ++ " = " ++ (show termo)
