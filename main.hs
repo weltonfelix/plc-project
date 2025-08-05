@@ -36,7 +36,7 @@ data Value = Num Double
 type State = [(Id, Value)]
 type Environment = [(Id, Value)]
 type Object = (Id, State) -- classe, estado
-type Heap = [(Ref, Object)] -- endereço, objeto
+type Heap = [(Value, Object)] -- endereço, objeto
 
 -- heap -> conjunto de pares endereco objeto -> tem que ter um id classe e estado
 
@@ -47,55 +47,76 @@ search :: Id -> State -> Value
 search i [] = Error
 search i ((j,v):l) = if i == j then v else search i l
 
-somaVal :: x -> y -> State -> Num
-somaVal (Number x) (Number y) _ = Number (x+y)
-somaVal (Var x) (Var y) s = somaVal (search x s) (search y s)
-somaVal _ _ _ = Error
+getObj :: Value -> Heap -> Object
+getObj (Ref i) [] = ("", [])  --error
+getObj (Ref i) ((j,v):l) = if i == j then (j, v) else search i l
+getObj _ _ = ("", [])
 
-multVal :: x -> y -> State -> Num
-multVal (Number x) (Number y) _ = Number (x*y)
-multVal (Var x) (Var y) s = multVal (search x s) (search y s)
-multVal _ _ _ = Error
+somaVal :: Value -> Value -> Value
+somaVal (Number x) (Number y) = Number (x+y)
+somaVal _ _ = Error
+
+multVal :: Value -> Value -> Value
+multVal (Number x) (Number y) = Number (x*y)
+multVal _ _ = Error
 
 app :: Value -> Value -> State -> (Value, State)
 app (Fun f) v e = f v e
 app _ _ e = (Error, e)
 
-wr :: Eq a => (a, t) -> [(a, t)] -> [(a, t)]
+wr :: (Id, Value) -> State -> State
 wr (i,v) [] = [(i,v)]
 wr (Var i,v) ((j,u):l) = if (i == j) then (j,v):l else [(j,u)] ++ (wr (i,v) l)
-(This,v) ((j,u):l) = if (This == j) then (j,v):l else [(j,u)] ++ (wr (This,v) l)
+
+wrh :: Value -> (Id, Value) -> Heap -> Heap --write heap -> procura o objeto com a ref e dá wr no estado dele
+wrh (Ref i) v [] = [] -- se não achar a ref, não faz nada?
+wrh (Ref i) v ((j, (c, s)):l) | i == j     = (j, (c, wr v s)) : l 
+                              | otherwise  = (j, (c, s)) : (wrh (Ref i) v l)
 
 
-int :: Environment -> State -> Heap -> Term -> (Value, State)
-int e s h (Var id)     = (search id s, s)
-int e s h (Lit num)    = (Num num, s)
+int :: Environment -> State -> Heap -> Term -> (Value, State, Heap)  --tem que alterar a heap tb
+int e s h (Var id)     = (search id s, s, h)
+int e s h (Lit num)    = (Num num,     s, h)
 
-int e s h (Sum  t1 t2) = (somaVal n1 (int t2), s) where (n1, s) = int t1
-int e s h (Mult t1 t2) = (multVal (int t1) (int t2), s)
+int e s h (Sum  t1 t2) = (somaVal n1 n2, s, h)
+                        where (n1, _) = int e s h t1
+                        where (n2, _) = int e s h t2
+int e s h (Mult t1 t2) = (multVal n1, n2, s, h)
+                        where (n1, _) = int e s h t1
+                        where (n2, _) = int e s h t2
 
-int e s h (Atr (Var id) t2) = wr id v ns h
-                            where (v, ns) = int e ns h t2 -- valor e novo estado
-int e s h (Atr (Afield This id) t2) = wr This v ns h
-                            where (v, ns) = int e ns h t2 -- valor e novo estado
-int e s h (Atr (Afield (Var idobj) id) t2) = wr (avaliar o id dentro do idobj) v ns h
-                            where (v, ns) = int e ns h t2 -- valor e novo estado
-int e s h (Atr t1 t2) =  -- atribui valor de t2 a t1
+int e s h (AField t1 id)    = search id os  --retorno o valor do campo do objeto na heap
+                            where (_, os)     = getObj rf h1
+                            where (rf, s1 h1) = int e s h t1
 
--- int e s h (If cond ifTrue ifFalse) = 
+int e s h (Atr (Var id) t2) = (v, wr (id, v) s1, h1)
+                            where (v, s1, h1) = int e s h t2
+int e s h (Atr (AField t1 id) t2) = (v, s2, wrh  rf (id, v) h2)
+                            where (rf, s2 h2) = int e s1 h1 t1
+                            where (v, s1, h1) = int e s  h  t2
 
--- Term = Var Id
---            | Lam Id Term
---            | Apl Term Term
---            | Seq Term Term
---            | While Term Term
---            | MethodCall Term Id Term
---            | If Term Term Term
---            | New Id
---            | InstanceOf Term Id
---            | For Id Term Term Term
---            | This
---            | AField Term Id
+--        | Lam Id Term
+    --    | Apl Term Term
+    --    | Atr Term Term
+    --    | Seq Term Term
+    --    | While Term Term
+    --    | MethodCall Term Id Term
+    --    | If Term Term Term
+    --    | New Id
+    --    | InstanceOf Term Id
+    --    | For Id Term Term Term
+    --    | This
+    --    | AField Term Id
+
+
+------ Funções auxiliares ---
+isVar :: Term -> Bool
+isVar (Var _)       = True
+isVar _             = False
+
+isAField :: Term -> Bool
+isField (AField _ _) = True
+isField _            = False
 
 
 
