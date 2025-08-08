@@ -25,7 +25,7 @@ data Decl = ClassDecl Id [Id] [Method]
 
 data Value = Num Double
             | Ref Int  -- referencia pra um obj
-            | Fun (Value -> State -> (Value, State))
+            | Fun (Value -> State -> Heap -> (Value, State, Heap))
             | Error
 
 type Program = [Definition]
@@ -42,21 +42,28 @@ int e s h (Var id)     = (search id s, s, h)
 int e s h (Lit num)    = (Num num,     s, h)
 
 int e s h (Sum  t1 t2) = (somaVal n1 n2, s, h)
-                        where (n1, _) = int e s h t1
-                        where (n2, _) = int e s h t2
-int e s h (Mult t1 t2) = (multVal n1, n2, s, h)
-                        where (n1, _) = int e s h t1
-                        where (n2, _) = int e s h t2
+                        where (n1, _, _) = int e s h t1
+                              (n2, _, _) = int e s h t2
 
-int e s h (AField t1 id)    = search id os  --retorno o valor do campo do objeto na heap
+int e s h (Mult t1 t2) = (multVal n1 n2, s, h)
+                        where (n1, _, _) = int e s h t1
+                              (n2, _, _) = int e s h t2
+
+int e s h (AField t1 id)    = (search id os, s1, h1)  --retorno o valor do campo do objeto na heap
                             where (_, os)     = getObj rf h1
-                            where (rf, s1 h1) = int e s h t1
+                                  (rf, s1, h1) = int e s h t1
 
 int e s h (Atr (Var id) t2) = (v, wr (id, v) s1, h1)
                             where (v, s1, h1) = int e s h t2
 int e s h (Atr (AField t1 id) t2) = (v, s2, wrh  rf (id, v) h2)
-                            where (rf, s2 h2) = int e s1 h1 t1
-                            where (v, s1, h1) = int e s  h  t2
+                            where (rf, s2, h2) = int e s1 h1 t1
+                                  (v, s1, h1) = int e s  h  t2
+
+int e s h (Lam x t) = (Fun (\v s h -> int ((x,v):e) s h t), s, h)
+
+int e s h (Apl t u) = app v1 v2 e2 h2
+                    where (v1,e1, h1) = int e s h t
+                          (v2,e2, h2) = int e1 s h1 u
 
 --        | Lam Id Term
     --    | Apl Term Term
@@ -78,31 +85,40 @@ search i ((j,v):l) = if i == j then v else search i l
 
 getObj :: Value -> Heap -> Object
 getObj (Ref i) [] = ("", [])  --error
-getObj (Ref i) ((j,v):l) = if i == j then (j, v) else search i l
+getObj (Ref i) ((Ref j, v):l) = if i == j then v else getObj (Ref i) l
+getObj (Ref i) ((_,v):l) = getObj (Ref i) l  -- caso o Value não seja Ref
 getObj _ _ = ("", [])
 
+
 somaVal :: Value -> Value -> Value
-somaVal (Number x) (Number y) = Number (x+y)
+somaVal (Num x) (Num y) = Num (x+y)
 somaVal _ _ = Error
 
 multVal :: Value -> Value -> Value
-multVal (Number x) (Number y) = Number (x*y)
+multVal (Num x) (Num y) = Num (x*y)
 multVal _ _ = Error
 
-app :: Value -> Value -> State -> (Value, State)
-app (Fun f) v e = f v e
-app _ _ e = (Error, e)
+app :: Value -> Value -> State -> Heap -> (Value, State, Heap)
+app (Fun f) v e h = f v e h
+app _ _ e h = (Error, e, h)
 
 wr :: (Id, Value) -> State -> State
 wr (i,v) [] = [(i,v)]
-wr (Var i,v) ((j,u):l) = if (i == j) then (j,v):l else [(j,u)] ++ (wr (i,v) l)
+wr (i,v) ((j,u):l) = if (i == j) then (j,v):l else [(j,u)] ++ (wr (i,v) l)
 
 wrh :: Value -> (Id, Value) -> Heap -> Heap --write heap -> procura o objeto com a ref e dá wr no estado dele
 wrh (Ref i) v [] = [] -- se não achar a ref, não faz nada?
-wrh (Ref i) v ((j, (c, s)):l) | i == j     = (j, (c, wr v s)) : l 
-                              | otherwise  = (j, (c, s)) : (wrh (Ref i) v l)
+wrh (Ref i) v ((Ref j, (c, s)):l) | i == j     = (Ref j, (c, wr v s)) : l 
+                                  | otherwise  = (Ref j, (c, s)) : (wrh (Ref i) v l)
+wrh ref v (h:hs) = h : (wrh ref v hs)  -- caso o Value não seja Ref
 
 ---------- instancias de show ---------------
+instance Show Value where
+    show (Num x) = show x
+    show (Ref i) = "Ref(" ++ show i ++ ")"
+    show (Fun _) = "<function>"
+    show Error = "Error"
+
 instance Show Term where
     show (Var id) = id
     show (Lit num) = show num
