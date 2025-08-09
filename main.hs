@@ -144,3 +144,55 @@ ifexemplo = If (Sum (Var "x") (Lit 2)) (Atr (Var "y") (Lit 5)) (Atr (Var "y") (L
 forexemplo = For "i" (Lit 0) (Sum (Var "X") (Lit 5)) ifexemplo
 
 ------------------------ --------------------------
+-- Tests
+
+testSearch = do
+    print $ "expected 5, got: " ++ show (search "x" [("x", Num 5)])
+    print $ "expected Ref(10), got: " ++ show (search "x" [("x", Ref 10)])
+    print $ "expected <function>, got: " ++ show (search "x" [("x", Fun (\v s h -> (Num 42, s, h)))])
+    print $ "expected Error, got: " ++ show (search "y" [("x", Num 5)])
+
+testGetObj = do
+    print $ "expected ('A', [('x', Num 5)]), got: " ++ show (getObj (Ref 10) [(Ref 10, ("A", [("x", Num 5)]))])
+    print $ "expected ('B', [('y', Num 7)]), got: " ++ show (getObj (Ref 20) [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))])
+    print $ "expected ('', []), got: " ++ show (getObj (Ref 30) [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))])
+    print $ "expected ('', []), got: " ++ show (getObj (Num 5) [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))])
+
+testSomaVal = do
+    print $ "expected Num 8, got: " ++ show (somaVal (Num 5) (Num 3))
+    print $ "expected Error, got: " ++ show (somaVal (Num 5) (Ref 10))
+    print $ "expected Error, got: " ++ show (somaVal (Ref 10) (Num 3))
+    print $ "expected Error, got: " ++ show (somaVal (Ref 10) (Ref 20))
+
+testMultVal = do
+    print $ "expected Num 15, got: " ++ show (multVal (Num 5) (Num 3))
+    print $ "expected Error, got: " ++ show (multVal (Num 5) (Ref 10))
+    print $ "expected Error, got: " ++ show (multVal (Ref 10) (Num 3))
+    print $ "expected Error, got: " ++ show (multVal (Ref 10) (Ref 20))
+
+testApp = do
+    print $ "expected (Num 42, ..., ...), got: " ++ show (app (Fun (\v s h -> (Num 42, s, h))) (Num 5) [] [])
+    print $ "expected (Error, ..., ...), got: " ++ show (app (Fun (\v s h -> (Num 42, s, h))) (Ref 10) [] [])
+    print $ "expected (Error, ..., ...), got: " ++ show (app (Ref 10) (Num 5) [] [])
+    print $ "expected (Num 12, [('x', Num 5)], [(Ref 1, ('A', [('a', Num 12)])])), got: " ++ show (
+            app (
+                    Fun (\v s h -> (
+                            Num 12,
+                            ("x", Num 5) : s,
+                            (Ref 1, ("A", [("a", Num 12)])) : h
+                            )
+                        )
+                ) (Num 5) [] []
+        )
+
+testWr = do
+    print $ "expected [('x', Num 5)], got: " ++ show (wr ("x", Num 5) [])
+    print $ "expected [('x', Num 5), ('y', Num 10)], got: " ++ show (wr ("y", Num 10) [("x", Num 5)])
+    print $ "expected [('x', Num 5), ('y', Num 10)], got: " ++ show (wr ("x", Num 5) [("x", Num 3), ("y", Num 10)])
+    print $ "expected [('x', Fun _)], got: " ++ show (wr ("x", Fun (\v s h -> (Num 42, s, h))) [])
+
+testWrh = do
+    let h = [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))]
+    print $ "expected [(Ref 10, ('A', [('x', Num 5)]))], got: " ++ show (wrh (Ref 10) ("x", Num 5) h)
+    print $ "expected [(Ref 20, ('B', [('y', Num 10)]))], got: " ++ show (wrh (Ref 20) ("y", Num 10) h)
+    print $ "expected [(Ref 10, ('A', [('x', Num 5)])), (Ref 20, ('B', [('y', Num 7)]))], got: " ++ show (wrh (Ref 30) ("z", Num 8) h)
