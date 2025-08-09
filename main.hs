@@ -101,6 +101,13 @@ int e s h (InstanceOf t_expr class_id) =
             else (Num 0, s1, h1)
         _ -> (Num 0, s1, h1)
 
+int e s h (New class_id) =
+    let
+        new_ref = length h + 1
+        new_obj = (class_id, [])
+    in
+    (Ref new_ref, s, h ++ [(Ref new_ref, new_obj)])
+
 --        | Lam Id Term
     --    | Apl Term Term
     --    | Seq Term Term
@@ -339,3 +346,12 @@ testInstanceOf = do
     print $ "expected (Num 1, ..., ...), got: " ++ show (int e s h (InstanceOf (Var "o1") "A"))
     -- Should return 0 if not instance of class
     print $ "expected (Num 0, ..., ...), got: " ++ show (int e s h (InstanceOf (Var "o1") "B"))
+
+testNew = do
+    let h = [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))]
+        s = [("o1", Ref 10)]
+        e = [("o2", Ref 20)]
+    -- Should create a new object in heap
+    print $ "expected (Ref 3, ..., [..., (Ref 3, ('C', []))]), got: " ++ show (int e s h (New "C"))
+    -- Should create a new object in heap and attribute to a new variable
+    print $ "expected (Ref 3, [('o3', Ref 3)], [..., (Ref 3, ('C', []))]), got: " ++ show (int e s h (Atr (Var "o3") (New "C")))
