@@ -41,13 +41,13 @@ int :: Environment -> State -> Heap -> Term -> (Value, State, Heap)  --tem que a
 int e s h (Var id)     = (search id s, s, h)
 int e s h (Lit num)    = (Num num,     s, h)
 
-int e s h (Sum  t1 t2) = (somaVal n1 n2, s, h)
-                        where (n1, _, _) = int e s h t1
-                              (n2, _, _) = int e s h t2
+int e s h (Sum  t1 t2) = (somaVal n1 n2, s2, h2)
+                        where (n1, s1, h1) = int e s h t1
+                              (n2, s2, h2) = int e s1 h1 t2
 
-int e s h (Mult t1 t2) = (multVal n1 n2, s, h)
-                        where (n1, _, _) = int e s h t1
-                              (n2, _, _) = int e s h t2
+int e s h (Mult t1 t2) = (multVal n1 n2, s2, h2)
+                        where (n1, s1, h1) = int e s h t1
+                              (n2, s2, h2) = int e s1 h1 t2
 
 int e s h (AField t1 id)    = (search id os, s1, h1)  --retorno o valor do campo do objeto na heap
                             where (_, os)     = getObj rf h1
@@ -64,6 +64,31 @@ int e s h (Lam x t) = (Fun (\v s h -> int ((x,v):e) s h t), s, h)
 int e s h (Apl t u) = app v1 v2 e2 h2
                     where (v1,e1, h1) = int e s h t
                           (v2,e2, h2) = int e1 s h1 u
+
+
+int e s h (If t_cond t_then t_else) =
+    case v_cond of
+        Num n -> if n /= 0
+             then int e s1 h1 t_then
+             else int e s1 h1 t_else
+        _     -> (Error, s1, h1)
+    where
+        (v_cond, s1, h1) = int e s h t_cond
+
+
+int e s h (InstanceOf t_expr class_id) =
+    let
+        (val, s1, h1) = int e s h t_expr
+    in
+        case val of
+        Ref ref_addr ->
+            let
+            (obj_class, _) = getObj (Ref ref_addr) h1
+            in
+            if obj_class == class_id && obj_class /= ""
+            then (Num 1, s1, h1)
+            else (Num 0, s1, h1)
+        _ -> (Num 0, s1, h1)
 
 --        | Lam Id Term
     --    | Apl Term Term
