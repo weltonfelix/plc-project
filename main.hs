@@ -38,7 +38,7 @@ type Heap = [(Value, Object)] -- endereço, objeto
 ------------- interpretador -------------------------
 
 int :: Environment -> State -> Heap -> Term -> (Value, State, Heap)  --tem que alterar a heap tb
-int e s h (Var id)     = (search id s, s, h)
+int e s h (Var id)     = (search id (s ++ e), s, h)
 int e s h (Lit num)    = (Num num,     s, h)
 
 int e s h (Sum  t1 t2) = (somaVal n1 n2, s2, h2)
@@ -56,14 +56,18 @@ int e s h (AField t1 id)    = (search id os, s1, h1)  --retorno o valor do campo
 int e s h (Atr (Var id) t2) = (v, wr (id, v) s1, h1)
                             where (v, s1, h1) = int e s h t2
 int e s h (Atr (AField t1 id) t2) = (v, s2, wrh  rf (id, v) h2)
-                            where (rf, s2, h2) = int e s1 h1 t1
-                                  (v, s1, h1) = int e s  h  t2
+                            where
+                                (v, s1, h1) = int e s  h  t2
+                                (rf, s2, h2) = int e s1 h1 t1
 
 int e s h (Lam x t) = (Fun (\v s h -> int ((x,v):e) s h t), s, h)
 
-int e s h (Apl t u) = app v1 v2 e2 h2
-                    where (v1,e1, h1) = int e s h t
-                          (v2,e2, h2) = int e1 s h1 u
+int e s h (Seq t u) = int e s1 h1 u
+                    where (_, s1, h1) = int e s h t
+
+int e s h (Apl f v) = app f1 v1 s2 h2
+                    where (f1,s1, h1) = int e s h f
+                          (v1,s2, h2) = int e s1 h1 v
 
 
 int e s h (If t_cond t_then t_else) =
@@ -75,6 +79,13 @@ int e s h (If t_cond t_then t_else) =
     where
         (v_cond, s1, h1) = int e s h t_cond
 
+int e s h (While cond body) = let (cond_res, s1, h1) = int e s h cond in
+    case cond_res of
+        Num n | n /= 0 -> 
+                let (_, s2, h2) = int e s1 h1 body in
+                    int e s2 h2 (While cond body) 
+        Num _ -> (Num 0, s1, h1)
+        _ -> (Error, s1, h1)
 
 int e s h (InstanceOf t_expr class_id) =
     let
@@ -169,11 +180,14 @@ ifexemplo = If (Sum (Var "x") (Lit 2)) (Atr (Var "y") (Lit 5)) (Atr (Var "y") (L
 forexemplo = For "i" (Lit 0) (Sum (Var "X") (Lit 5)) ifexemplo
 
 ------------------------ --------------------------
--- Tests
+-- Tests Basic Functions
 
 testSearch = do
+    -- Should return numbers
     print $ "expected 5, got: " ++ show (search "x" [("x", Num 5)])
+    -- Should return Refs
     print $ "expected Ref(10), got: " ++ show (search "x" [("x", Ref 10)])
+    -- Should return functions
     print $ "expected <function>, got: " ++ show (search "x" [("x", Fun (\v s h -> (Num 42, s, h)))])
     print $ "expected Error, got: " ++ show (search "y" [("x", Num 5)])
 
@@ -221,3 +235,107 @@ testWrh = do
     print $ "expected [(Ref 10, ('A', [('x', Num 5)]))], got: " ++ show (wrh (Ref 10) ("x", Num 5) h)
     print $ "expected [(Ref 20, ('B', [('y', Num 10)]))], got: " ++ show (wrh (Ref 20) ("y", Num 10) h)
     print $ "expected [(Ref 10, ('A', [('x', Num 5)])), (Ref 20, ('B', [('y', Num 7)]))], got: " ++ show (wrh (Ref 30) ("z", Num 8) h)
+
+-- Test Interpreter Functions
+
+testVar = do
+    -- Should find in state
+    print $ "expected (Num 5, ..., ...), got: " ++ show (int [] [("x", Num 5)] [] (Var "x"))
+    -- Should find in Environment
+    print $ "expected (Ref 10, ..., ...), got: " ++ show (int [("x", Ref 10)] [] [] (Var "x"))
+    -- Should return Error if not exists
+    print $ "expected (Error, ..., ...), got: " ++ show (int [] [("y", Num 5)] [] (Var "x"))
+
+testLit = do
+    -- Should return Num
+    print $ "expected (Num 5, ..., ...), got: " ++ show (int [] [] [] (Lit 5))
+    -- Should return Num with negative value
+    print $ "expected (Num -3, ..., ...), got: " ++ show (int [] [] [] (Lit (-3)))
+
+testSum = do
+    -- Should return Num
+    print $ "expected (Num 8, ..., ...), got: " ++ show (int [] [] [] (Sum (Lit 5) (Lit 3)))
+    -- Should return Error
+    print $ "expected (Error, ..., ...), got: " ++ show (int [] [] [] (Sum (Lit 5) (Var "x")))
+
+testMult = do
+    -- Should return Num
+    print $ "expected (Num 15, ..., ...), got: " ++ show (int [] [] [] (Mult (Lit 5) (Lit 3)))
+    -- Should return Error
+    print $ "expected (Error, ..., ...), got: " ++ show (int [] [] [] (Mult (Lit 5) (Var "x")))
+
+testAField = do
+    let h = [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))]
+        s = [("o1", Ref 10)]
+        e = [("o2", Ref 20)]
+    -- Should return Num from state variable
+    print $ "expected (Num 5, ..., ...), got: " ++ show (int e s h (AField (Var "o1") "x"))
+    -- Should return Num from env variable
+    print $ "expected (Num 7, ..., ...), got: " ++ show (int e s h (AField (Var "o2") "y"))
+    -- Should return Error if obj not found
+    print $ "expected (Error, ..., ...), got: " ++ show (int e s h (AField (Var "y") "x"))
+    -- Should return Error if prop not exists
+    print $ "expected (Error, ..., ...), got: " ++ show (int e s h (AField (Var "o1") "y"))
+
+testAtr = do
+    let h = [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))]
+        s = [("o1", Ref 10)]
+        e = [("o2", Ref 20)]
+    -- Should create a new var in state
+    print $ "expected (Num 10, [('o1', Ref 10), ('newVar', Num 10)], ...), got: " ++ show (int e s h (Atr (Var "newVar") (Lit 10)))
+    -- Should update existing var in state
+    print $ "expected (Num 5, [('o1', Num 5), ...), got: " ++ show (int e s h (Atr (Var "o1") (Lit 5)))
+    -- Should update existing var in heap object
+    print $ "expected (Num 8, [...], [(Ref 10, ('A', [('x', Num 8)]))]), got: " ++ show (int e s h (Atr (AField (Var "o1") "x") (Lit 8)))
+
+testLam = do -- lambda funs
+    let h = [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))]
+        s = [("o1", Ref 10)]
+        e = [("o2", Ref 20)]
+    -- Should return a function
+    print $ "expected (Fun _, ..., ...), got: " ++ show (int e s h (Lam "x" (Sum (Var "x") (Lit 3))))
+    -- Should apply the function
+    let (Fun f, _, _) = int e s h (Lam "x" (Sum (Var "x") (Lit 3)))
+    print $ "expected (Num 8, ..., ...), got: " ++ show (f (Num 5) s h)
+
+
+testSeq = do
+    let h = [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))]
+        s = [("o1", Ref 10)]
+        e = [("o2", Ref 20)]
+    -- Should execute first term and then second
+    print $ "expected (Num 8, [('o1', Num 8)], ...), got: " ++ show (int e s h (Seq (Atr (Var "o1") (Lit 8)) (Var "o1")))
+
+testApl = do
+    let h = [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))]
+        s = [("o1", Ref 10)]
+        e = [("o2", Ref 20)]
+    -- Should apply the function
+    print $ "expected (Num 8, ..., ...), got: " ++ show (int e s h (Apl (Lam "x" (Sum (Var "x") (Lit 3))) (Lit 5)))
+
+testIf = do
+    let h = [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))]
+        s = [("o1", Ref 10)]
+        e = [("o2", Ref 20)]
+    -- Should execute then branch
+    print $ "expected (Num 5, [('y', Num 5)], ...), got: " ++ show (int e s h (If (Lit 1) (Atr (Var "y") (Lit 5)) (Atr (Var "y") (Lit 3))))
+    -- Should execute else branch
+    print $ "expected (Num 3, [('y', Num 3)], ...), got: " ++ show (int e s h (If (Lit 0) (Atr (Var "y") (Lit 5)) (Atr (Var "y") (Lit 3))))
+
+testWhile = do
+    let h = [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))]
+        s = [("x", Num 5), ("y", Num 0)]
+        e = [("o2", Ref 20)]
+    -- Should execute body while condition is true
+    print $ "expected (Num 0, [('x', Num 0), ('y', Num 5)], ...), got: " ++ show (int e s h (While (Var "x") (Seq (Atr (Var "x") (Sum (Var "x") (Lit (-1)))) (Atr (Var "y") (Sum (Var "y") (Lit 1))))))
+    -- Should return Num 0 when condition is false
+    print $ "expected (Num 0, [('x', Num 5), ('y', Num 0)], ...), got: " ++ show (int e s h (While (Lit 0) (Atr (Var "x") (Lit 5))))
+
+testInstanceOf = do
+    let h = [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))]
+        s = [("o1", Ref 10)]
+        e = [("o2", Ref 20)]
+    -- Should return 1 if instance of class
+    print $ "expected (Num 1, ..., ...), got: " ++ show (int e s h (InstanceOf (Var "o1") "A"))
+    -- Should return 0 if not instance of class
+    print $ "expected (Num 0, ..., ...), got: " ++ show (int e s h (InstanceOf (Var "o1") "B"))
