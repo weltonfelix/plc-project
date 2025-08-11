@@ -78,7 +78,8 @@ type Heap = [(Value, Object)]
 intDecl :: [Decl] -> Environment
 intDecl [] = []
 intDecl ((ClassDecl id fields methods):ls) = (id, ClassDef fields methods) : intDecl ls
--- intDecl ((FunDecl id term):ls) =
+intDecl ((FunDecl id term):ls) = (id, Fun (\v s h -> int [] s h (Apl term (TermVal v)))) : intDecl ls
+
 
 -------------- Interpreter --------------------------
 -- | int: interpret a Term under (Environment, State, Heap).
@@ -199,10 +200,15 @@ int e s h (MethodCall t1 id t2) = (retVal, s2, h4)
                                         (method)                = searchMethod id methods  
                                 --- get value of t2 (the parameter)
                                         (v, s2, h2) = int e s1 h1 t2
-                                --- apply the method to the object state and parameter
-                                        (retVal, state_obj2, h3) = int e state_obj1 h2 (Apl method (TermVal v))
+                                --- create environment with 'this' pointing to current object
+                                        method_env = ("this", obj) : e
+                                --- apply the method to the object state and parameter with 'this' in environment
+                                        (retVal, state_obj2, h3) = int method_env state_obj1 h2 (Apl method (TermVal v))
                                 --- write the updated state back to the heap
                                         (h4) = wrho obj (class_obj, state_obj2) h3
+
+-- This: returns the current object reference
+int e s h This = (search "this" e, s, h)
 
 int e s h (TermVal v) = (v, s, h) -- unwrap TermVal to Value
 int e s h t = (Error ("Unknown term " ++ (show t)) , s, h) -- Fallback for unrecognized terms
@@ -319,6 +325,10 @@ instance Show Definition where
 
 instance Show Method where
     show (Method id term)  = "Method " ++ (id) ++ (show term)
+
+instance Show Decl where
+    show (ClassDecl id fields methods) = "ClassDecl " ++ id ++ " " ++ show fields ++ " " ++ show methods
+    show (FunDecl id term) = "FunDecl " ++ id ++ " " ++ show term
 
 -------- Tests ---------
 -- Simple assertion helpers
@@ -626,8 +636,15 @@ main = do
 contaMethod = Method "Depositar" (Lam "valor" (Atr (Var "Saldo") (Sum (Var "Saldo") (Var "valor"))))
 contaMethodThis = Method "Depositar" (Lam "valor" (Atr (AField This "Saldo") (Sum (AField This "Saldo") (Var "valor"))))
 contaClass = ClassDecl "Conta" ["Saldo"] [contaMethod]
+
+-- Exemplos de definições de funções globais
+squareFunc = FunDecl "square" (Lam "x" (Mult (Var "x") (Var "x")))
+addTenFunc = FunDecl "addTen" (Lam "n" (Sum (Var "n") (Lit 10)))
+doubleFunc = FunDecl "double" (Lam "x" (Mult (Var "x") (Lit 2)))
+
 exampleAmbienteContaFromDecl = intDecl [contaClass]
-baseEnv = [ ("<", ltFunction) ] ++ exampleAmbienteContaFromDecl -- inclui a função < e a classe Conta
+exampleAmbienteFuncsFromDecl = intDecl [squareFunc, addTenFunc, doubleFunc]
+baseEnv = [ ("<", ltFunction) ] ++ exampleAmbienteContaFromDecl ++ exampleAmbienteFuncsFromDecl -- inclui a função <, a classe Conta e as funções globais
 
 contaAtrCt = Atr (Var "ct") (New "Conta")
 contaSeeSaldo = AField (Var "ct") "Saldo"
@@ -672,6 +689,13 @@ lessThan v1 s h = (Fun lessThanSecond, s, h)
         _                -> (Error "Invalid operands to <", s', h')
 ltFunction = Fun lessThan
 
+-- Programas de exemplo para testar funções definidas
+testSquareProgram = Apl (Var "square") (Lit 5)  -- deve retornar 25
+testAddTenProgram = Apl (Var "addTen") (Lit 7)  -- deve retornar 17
+testDoubleProgram = Apl (Var "double") (Lit 3)  -- deve retornar 6
+
+-- Programa composto usando várias funções
+testComposedProgram = Apl (Var "square") (Apl (Var "addTen") (Lit 2))  -- square(addTen(2)) = square(12) = 144
 
 programWhile = Seq (Atr (Var "sum") (Lit 0))                -- sum = 0
     (Seq (Atr (Var "i") (Lit 1))                            -- i = 1
@@ -684,3 +708,20 @@ programWhile = Seq (Atr (Var "sum") (Lit 0))                -- sum = 0
 -- run in the base environment with empty state and heap
 runInBaseEnv :: Term -> (Value, State, Heap)
 runInBaseEnv t = int baseEnv [] [] t
+
+-- Função para testar as definições de funções
+testDefFunctions :: IO ()
+testDefFunctions = do
+    putStrLn "\n== TEST DEF FUNCTIONS =="
+    
+    let (result1, _, _) = runInBaseEnv testSquareProgram
+    putStrLn $ "square(5) = " ++ show result1 ++ " (expected: 25.0)"
+
+    let (result2, _, _) = runInBaseEnv testAddTenProgram  
+    putStrLn $ "addTen(7) = " ++ show result2 ++ " (expected: 17.0)"
+
+    let (result3, _, _) = runInBaseEnv testDoubleProgram
+    putStrLn $ "double(3) = " ++ show result3 ++ " (expected: 6.0)"
+
+    let (result4, _, _) = runInBaseEnv testComposedProgram
+    putStrLn $ "square(addTen(2)) = " ++ show result4 ++ " (expected: 144.0)"
