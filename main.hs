@@ -294,6 +294,7 @@ showIdent n (For id t1 t2 t3) = printTab n ++  "for " ++ id ++ " in range(" ++ (
 showIdent n (This) = printTab n ++ "this"
 showIdent n (AField t id) = printTab n ++ (show t) ++ "." ++ id
 showIdent n (TermVal v)   = printTab n ++ "TermVal(" ++ (show v) ++ ")"
+showIdent n (EmptyTerm)   = printTab n
 
 instance Show Term where
     show t = showIdent 0 t
@@ -608,15 +609,21 @@ main = do
 --------------- Exemplos ------------------
 
 contaMethod = Method "Depositar" (Lam "valor" (Atr (Var "Saldo") (Sum (Var "Saldo") (Var "valor"))))
+contaMtSegu = Method "DepositarSeguro" (Lam "valor" ( 
+    If (Apl (Apl (Var ">") (Var "valor")) (Lit 0))              ---if valor > 0
+        (Atr (AField This "Saldo") (Sum (AField This "Saldo") (Var "valor")))   -- this.saldo += valor
+        EmptyTerm  --empty else
+            ))
+
 contaMethodThis = Method "Depositar" (Lam "valor" (Atr (AField This "Saldo") (Sum (AField This "Saldo") (Var "valor"))))
-contaClass = ClassDecl "Conta" ["Saldo"] [contaMethod]
+contaClass = ClassDecl "Conta" ["Saldo"] [contaMethod, contaMtSegu]
 exampleAmbienteContaFromDecl = intDecl [contaClass]
 baseEnv = [ ("<", ltFunction) ] ++ exampleAmbienteContaFromDecl -- inclui a função < e a classe Conta
 
 contaAtrCt = Atr (Var "ct") (New "Conta")
 contaSeeSaldo = AField (Var "ct") "Saldo"
 ifTerm = If (Apl (Apl (Var "<") (Var "i")) (Lit 2))        -- if(i < 2)
-            (MethodCall (Var "ct") "Depositar" (Var "i"))  --   ct.Depositar(i)
+            (MethodCall (Var "ct") "DepositarSeguro" (Lit (-55)))  --   ct.DepositarSeguro(-55)
             (MethodCall (Var "ct") "Depositar" (Lit 100))  -- else ct.Depositar(100)
 whileTerm = Seq (Atr (Var "i") (Lit 1))                    -- i = 1
         ( While (Apl (Apl (Var "<") (Var "i")) (Lit 6))    -- while(i < 6)
