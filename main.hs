@@ -13,6 +13,10 @@ Conventions:
     - Evaluation is strict and left-to-right, threading State and Heap.
 
 Tip: use the 'main' function at the bottom to run quick smoke tests in GHCi.
+
+Call 'runExample' to execute a sample program.
+or 'runInBaseEnv programWhile' to run the while example
+or 'runInBaseEnv _term_' to run a term in the base environment.
 -}
 
 import Data.List (sortBy)
@@ -165,11 +169,12 @@ int e s h (InstanceOf t_expr class_id) =
 int e s h (New class_id) =
     let
         new_ref = length h + 1
-        new_obj = (class_id, [])
+        (ClassDef atributes  _)  = search class_id e
+        new_obj = (class_id, idToEmptyState atributes) -- create new object with empty state
     in
     (Ref new_ref, s, h ++ [(Ref new_ref, new_obj)])
 
---     --    | MethodCall Term Id Term
+--  MethodCall Term Id Term
 int e s h (MethodCall t1 id t2) = (retVal, s2, h4)
                                 where   (obj, s1, h1) = int e s h t1  -- get object reference from variable
                                 --- get method and object state
@@ -183,13 +188,16 @@ int e s h (MethodCall t1 id t2) = (retVal, s2, h4)
                                 --- write the updated state back to the heap
                                         (h4) = wrho obj (class_obj, state_obj2) h3
 
+int e s h (TermVal v) = (v, s, h) -- unwrap TermVal to Value
+int e s h t = (Error ("Unknown term " ++ (show t)) , s, h) -- Fallback for unrecognized terms
+
 ---------- Helper Functions ----------------
 
 type SearchContext = [(Id, Value)] -- Context for searching in State/Env
 
 -- | Lookup an identifier in an association list (State/Env)
 search :: Id -> SearchContext -> Value
-search i [] = Error "Var not found"
+search i [] = Error ("Var not found " ++ i)
 search i ((j,v):l) = if i == j then v else search i l
 
 searchMethod :: Id -> [Method] -> Term
@@ -243,6 +251,10 @@ wrho (Ref i) obj ((Ref j, _):l) | i == j     = (Ref j, obj) : l
                                | otherwise  = (Ref j, obj) : (wrho (Ref i) obj l)
 wrho _ _ h = h  -- caso o Value não seja Ref, do nothing
 
+idToEmptyState :: [Id] -> State
+idToEmptyState [] = []
+idToEmptyState (id:ls) = (id, Num 0) : idToEmptyState ls
+
 ---------- Equality ----------
 instance Eq Value where
     (Num a) == (Num b) = a == b
@@ -254,7 +266,7 @@ instance Eq Value where
 ---------- Show Instances ---------------
 instance Show Value where
     show (Num x) = show x
-    show (Ref i) = "Ref(" ++ show i ++ ")"
+    show (Ref i) = "Ref($" ++ show i ++ ")"
     show (Fun _) = "<function>"
     show (Error message) = "Unhandled error: " ++ message
     show (ClassDef fields methods) = "Class(" ++ show fields ++ ", " ++ show methods ++ ")"
@@ -269,18 +281,19 @@ showIdent n (Var id)      = printTab n ++ id
 showIdent n (Lit num)     = printTab n ++ show num
 showIdent n (Sum x y)     = printTab n ++ "(" ++ (show x) ++ " + " ++ (show y) ++ ")"
 showIdent n (Mult x y)    = printTab n ++ "(" ++ (show x) ++ " * " ++ (show y) ++ ")"
-showIdent n (Lam x y)     = printTab n ++ "( Lambda " ++ x ++ ": " ++ (show y) ++ ")"
+showIdent n (Lam x y)     = printTab n ++ "(Lambda " ++ x ++ ": " ++ (show y) ++ ")"
 showIdent n (Apl t1 t2)   = printTab n ++ (show t1) ++ "(" ++ (show t2) ++ ")"
 showIdent n (Atr t1 t2)   = printTab n ++ (show t1) ++ " = " ++ (show t2)
-showIdent n (Seq t1 t2)   = (showIdent n t1) ++ ";\n" ++ (showIdent n t2)
+showIdent n (Seq t1 t2)   = (showIdent n t1) ++ "\n" ++ (showIdent n t2)
 showIdent n (MethodCall t1 id t2) = printTab n ++  (show t1) ++ "." ++ id ++ "(" ++ (show t2) ++ ")"
-showIdent n (While t1 t2) = printTab n ++ "while(" ++ (show t1) ++ "){\n" ++ (showIdent (n+1) t2) ++ "\n" ++ printTab n ++ "}\n"
-showIdent n (If t1 t2 t3) = printTab n ++ "if("    ++ (show t1) ++ "){\n" ++ (showIdent (n+1) t2) ++ "\n" ++ printTab n ++ "} else {\n" ++ (showIdent (n+1) t3) ++ "\n" ++ printTab n ++ "}\n"
+showIdent n (While t1 t2) = printTab n ++ "while(" ++ (show t1) ++ "){\n" ++ (showIdent (n+1) t2) ++ "\n" ++ printTab n ++ "}"
+showIdent n (If t1 t2 t3) = printTab n ++ "if("    ++ (show t1) ++ "){\n" ++ (showIdent (n+1) t2) ++ "\n" ++ printTab n ++ "} else {\n" ++ (showIdent (n+1) t3) ++ "\n" ++ printTab n ++ "}"
 showIdent n (New id)      = printTab n ++ "new " ++ id
 showIdent n (InstanceOf t id) = printTab n ++ "InstanceOf(" ++ (show t) ++ ", " ++ id ++ ")"
-showIdent n (For id t1 t2 t3) = printTab n ++  "for " ++ id ++ " in range(" ++ (show t1) ++ ", " ++ (show t2) ++ "){\n" ++ (showIdent (n+1) t3) ++ "}\n"
+showIdent n (For id t1 t2 t3) = printTab n ++  "for " ++ id ++ " in range(" ++ (show t1) ++ ", " ++ (show t2) ++ "){\n" ++ (showIdent (n+1) t3) ++ "}"
 showIdent n (This) = printTab n ++ "this"
 showIdent n (AField t id) = printTab n ++ (show t) ++ "." ++ id
+showIdent n (TermVal v)   = printTab n ++ "TermVal(" ++ (show v) ++ ")"
 
 instance Show Term where
     show t = showIdent 0 t
@@ -289,7 +302,7 @@ instance Show Definition where
     show (Def id term)  = "def " ++ (id) ++ " = " ++ (show term)
 
 instance Show Method where
-    show (Method id term)  = "Method  " ++ (id) ++ (show term)
+    show (Method id term)  = "Method " ++ (id) ++ (show term)
 
 -------- Tests ---------
 -- Simple assertion helpers
@@ -592,12 +605,66 @@ main = do
     testInstanceOf
     testNew
 
---- Exemplos ---
+--------------- Exemplos ------------------
 
-ifexemplo = If (Sum (Var "x") (Lit 2)) (Atr (Var "y") (Lit 5)) (Atr (Var "y") (Lit 3))
-forexemplo = For "i" (Lit 0) (Sum (Var "X") (Lit 5)) ifexemplo
+contaMethod = Method "Depositar" (Lam "valor" (Atr (Var "Saldo") (Sum (Var "Saldo") (Var "valor"))))
+contaMethodThis = Method "Depositar" (Lam "valor" (Atr (AField This "Saldo") (Sum (AField This "Saldo") (Var "valor"))))
+contaClass = ClassDecl "Conta" ["Saldo"] [contaMethod]
+exampleAmbienteContaFromDecl = intDecl [contaClass]
+baseEnv = [ ("<", ltFunction) ] ++ exampleAmbienteContaFromDecl -- inclui a função < e a classe Conta
+
+contaAtrCt = Atr (Var "ct") (New "Conta")
+contaSeeSaldo = AField (Var "ct") "Saldo"
+ifTerm = If (Apl (Apl (Var "<") (Var "i")) (Lit 2))        -- if(i < 2)
+            (MethodCall (Var "ct") "Depositar" (Var "i"))  --   ct.Depositar(i)
+            (MethodCall (Var "ct") "Depositar" (Lit 100))  -- else ct.Depositar(100)
+whileTerm = Seq (Atr (Var "i") (Lit 1))                    -- i = 1
+        ( While (Apl (Apl (Var "<") (Var "i")) (Lit 6))    -- while(i < 6)
+            (Seq ifTerm                                    --   ifTerm
+            (Atr (Var "i") (Sum (Var "i") (Lit 1))))       --   i = i + 1
+        )
+contaSeqPrograma = Seq contaAtrCt ( Seq whileTerm contaSeeSaldo )
+
+--------------------------------------------------------------------
+runExample :: IO ()
+runExample = do
+    -- Executa o programa de exemplo
+    let (ret, stateFinal, heapFinal) = runInBaseEnv contaSeqPrograma
+
+    putStrLn $ "\n===================="
+    putStrLn $ "Programa: \n--------------\n" ++ show contaSeqPrograma ++ "\n--------------"
+    putStrLn $ "Resultado da execução: " ++ show ret
+    putStrLn $ "Estado final: " ++ show stateFinal
+    putStrLn $ "Heap final: " ++ show heapFinal
+
+    case lookup "ct" stateFinal of
+        Just ref@(Ref _) -> do
+            let (_, campos) = getObj ref heapFinal
+            putStrLn $ "Saldo final: " ++ show (lookup "Saldo" campos)
+        _ -> putStrLn "Objeto 'ct' não encontrado no estado."
+
+    putStrLn $ "====================\n"
+--------------------------------------------------------------------
+
+lessThan :: Value -> State -> Heap -> (Value, State, Heap)
+lessThan v1 s h = (Fun lessThanSecond, s, h)
+  where
+    lessThanSecond :: Value -> State -> Heap -> (Value, State, Heap)
+    lessThanSecond v2 s' h' = 
+      case (v1, v2) of
+        (Num n1, Num n2) -> (Num (if n1 < n2 then 1 else 0), s', h')
+        _                -> (Error "Invalid operands to <", s', h')
+ltFunction = Fun lessThan
 
 
-contaMethod   = Method "Depositar" (Lam "valor" (Atr (AField This "Saldo") (Sum (AField This "Saldo") (Var "valor"))))
-classExemplo  = ClassDecl "Conta" ["Saldo"] [contaMethod]
-ambientesimples = intDecl [classExemplo]
+programWhile = Seq (Atr (Var "sum") (Lit 0))                -- sum = 0
+    (Seq (Atr (Var "i") (Lit 1))                            -- i = 1
+      (While (Apl (Apl (Var "<") (Var "i")) (Lit 101))      -- while(i < 101)
+        ( Seq (Atr (Var "sum") (Sum (Var "sum") (Var "i"))) --    sum = sum + i
+          (Atr (Var "i") (Sum (Var "i") (Lit 1))) )         --    i = i + 1
+      )
+    )
+
+-- run in the base environment with empty state and heap
+runInBaseEnv :: Term -> (Value, State, Heap)
+runInBaseEnv t = int baseEnv [] [] t
