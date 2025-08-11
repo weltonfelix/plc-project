@@ -165,6 +165,22 @@ int e s h (InstanceOf t_expr class_id) =
             else (Num 0, s1, h1)
         _ -> (Num 0, s1, h1)
 
+-- For loop: for id in range(start, end) { body }
+int e s h (For id start end body) = 
+    let (start_val, s1, h1) = int e s h start
+        (end_val, s2, h2) = int e s1 h1 end
+    in case (start_val, end_val) of
+        (Num start_n, Num end_n) -> 
+            forLoop id (round start_n) (round end_n) body e s2 h2
+        _ -> (Error "For loop bounds must be numeric", s2, h2)
+  where
+    forLoop :: Id -> Int -> Int -> Term -> Environment -> State -> Heap -> (Value, State, Heap)
+    forLoop id start end body e s h
+        | start >= end = (Num 0, s, h)
+        | otherwise = 
+            let (_, s1, h1) = int ((id, Num (fromIntegral start)):e) s h body
+            in forLoop id (start + 1) end body e s1 h1
+
 -- | Creates a new object in the heap
 int e s h (New class_id) =
     let
