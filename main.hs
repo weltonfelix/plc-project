@@ -642,7 +642,7 @@ contaMtSegu = Method "DepositarSeguro" (Lam "valor" (
             ))
 
 contaMethodThis = Method "Depositar" (Lam "valor" (Atr (AField This "Saldo") (Sum (AField This "Saldo") (Var "valor"))))
-contaClass = ClassDecl "Conta" ["Saldo"] [contaMethod]
+contaClass = ClassDecl "Conta" ["Saldo"] [contaMethod, contaMtSegu]
 
 -- Exemplos de definições de funções globais
 squareFunc = FunDecl "square" (Lam "x" (Mult (Var "x") (Var "x")))
