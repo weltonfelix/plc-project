@@ -41,6 +41,8 @@ data Term = Var Id
            | For Id Term Term Term
            | This
            | AField Term Id
+           | TermVal Value -- for method calls parameters
+           | EmptyTerm -- Error
 
 
 data Definition = Def Id Term
@@ -53,6 +55,8 @@ data Value = Num Double
             | Ref Int  -- referencia pra um obj
             | Fun (Value -> State -> Heap -> (Value, State, Heap))
             | Error String 
+            | ClassDef [Id] [Method]
+            | Void
 
 type Program = [Definition]
 
@@ -66,6 +70,11 @@ type Object = (Id, State)
 -- | Heap: maps reference (Ref n) to object
 type Heap = [(Value, Object)]
 
+--------------- Declarations -------------------
+intDecl :: [Decl] -> Environment
+intDecl [] = []
+intDecl ((ClassDecl id fields methods):ls) = (id, ClassDef fields methods) : intDecl ls
+-- intDecl ((FunDecl id term):ls) =
 
 -------------- Interpreter --------------------------
 -- | int: interpret a Term under (Environment, State, Heap).
@@ -160,17 +169,19 @@ int e s h (New class_id) =
     in
     (Ref new_ref, s, h ++ [(Ref new_ref, new_obj)])
 
---        | Lam Id Term
-    --    | Apl Term Term
-    --    | Seq Term Term
-    --    | While Term Term
-    --    | MethodCall Term Id Term
-    --    | If Term Term Term
-    --    | New Id
-    --    | InstanceOf Term Id
-    --    | For Id Term Term Term
-    --    | This
-
+--     --    | MethodCall Term Id Term
+int e s h (MethodCall t1 id t2) = (retVal, s2, h4)
+                                where   (obj, s1, h1) = int e s h t1  -- get object reference from variable
+                                --- get method and object state
+                                        (class_obj, state_obj1) = getObj obj h1
+                                        (ClassDef _ methods)    = search class_obj e
+                                        (method)                = searchMethod id methods  
+                                --- get value of t2 (the parameter)
+                                        (v, s2, h2) = int e s1 h1 t2
+                                --- apply the method to the object state and parameter
+                                        (retVal, state_obj2, h3) = int e state_obj1 h2 (Apl method (TermVal v))
+                                --- write the updated state back to the heap
+                                        (h4) = wrho obj (class_obj, state_obj2) h3
 
 ---------- Helper Functions ----------------
 
@@ -180,6 +191,11 @@ type SearchContext = [(Id, Value)] -- Context for searching in State/Env
 search :: Id -> SearchContext -> Value
 search i [] = Error "Var not found"
 search i ((j,v):l) = if i == j then v else search i l
+
+searchMethod :: Id -> [Method] -> Term
+searchMethod _ [] = EmptyTerm 
+searchMethod i ((Method j t):l) | i == j    = t
+                                | otherwise = searchMethod i l
 
 -- | Retrieve object from Heap for a given Value (expects Ref n)
 getObj :: Value -> Heap -> Object
@@ -218,7 +234,14 @@ wrh :: Value -> (Id, Value) -> Heap -> Heap -- find object by ref and write into
 wrh (Ref i) v [] = [] -- if ref is not found, do nothing
 wrh (Ref i) v ((Ref j, (c, s)):l) | i == j     = (Ref j, (c, wr v s)) : l 
                                   | otherwise  = (Ref j, (c, s)) : (wrh (Ref i) v l)
-wrh ref v (h:hs) = h : (wrh ref v hs)  -- caso o Value não seja Ref
+wrh _ _ h = h  -- caso o Value não seja Ref, do nothing
+
+-- | Write/update a object in the Heap
+wrho :: Value -> Object -> Heap -> Heap -- 
+wrho (Ref i) obj [] = [(Ref i, obj)] -- if ref is not found, add it
+wrho (Ref i) obj ((Ref j, _):l) | i == j     = (Ref j, obj) : l 
+                               | otherwise  = (Ref j, obj) : (wrho (Ref i) obj l)
+wrho _ _ h = h  -- caso o Value não seja Ref, do nothing
 
 ---------- Equality ----------
 instance Eq Value where
@@ -234,27 +257,39 @@ instance Show Value where
     show (Ref i) = "Ref(" ++ show i ++ ")"
     show (Fun _) = "<function>"
     show (Error message) = "Unhandled error: " ++ message
+    show (ClassDef fields methods) = "Class(" ++ show fields ++ ", " ++ show methods ++ ")"
+    show (Void) = "Void"
+
+printTab :: Int -> String
+printTab 0 = ""
+printTab n =  "   " ++ printTab (n-1)
+
+showIdent :: Int -> Term -> String
+showIdent n (Var id)      = printTab n ++ id
+showIdent n (Lit num)     = printTab n ++ show num
+showIdent n (Sum x y)     = printTab n ++ "(" ++ (show x) ++ " + " ++ (show y) ++ ")"
+showIdent n (Mult x y)    = printTab n ++ "(" ++ (show x) ++ " * " ++ (show y) ++ ")"
+showIdent n (Lam x y)     = printTab n ++ "( Lambda " ++ x ++ ": " ++ (show y) ++ ")"
+showIdent n (Apl t1 t2)   = printTab n ++ (show t1) ++ "(" ++ (show t2) ++ ")"
+showIdent n (Atr t1 t2)   = printTab n ++ (show t1) ++ " = " ++ (show t2)
+showIdent n (Seq t1 t2)   = (showIdent n t1) ++ ";\n" ++ (showIdent n t2)
+showIdent n (MethodCall t1 id t2) = printTab n ++  (show t1) ++ "." ++ id ++ "(" ++ (show t2) ++ ")"
+showIdent n (While t1 t2) = printTab n ++ "while(" ++ (show t1) ++ "){\n" ++ (showIdent (n+1) t2) ++ "\n" ++ printTab n ++ "}\n"
+showIdent n (If t1 t2 t3) = printTab n ++ "if("    ++ (show t1) ++ "){\n" ++ (showIdent (n+1) t2) ++ "\n" ++ printTab n ++ "} else {\n" ++ (showIdent (n+1) t3) ++ "\n" ++ printTab n ++ "}\n"
+showIdent n (New id)      = printTab n ++ "new " ++ id
+showIdent n (InstanceOf t id) = printTab n ++ "InstanceOf(" ++ (show t) ++ ", " ++ id ++ ")"
+showIdent n (For id t1 t2 t3) = printTab n ++  "for " ++ id ++ " in range(" ++ (show t1) ++ ", " ++ (show t2) ++ "){\n" ++ (showIdent (n+1) t3) ++ "}\n"
+showIdent n (This) = printTab n ++ "this"
+showIdent n (AField t id) = printTab n ++ (show t) ++ "." ++ id
 
 instance Show Term where
-    show (Var id) = id
-    show (Lit num) = show num
-    show (Sum x y) = "(" ++ (show x) ++ " + " ++ (show y) ++ ")"
-    show (Mult x y) = "(" ++ (show x) ++ " * " ++ (show y) ++ ")"
-    show (Lam x y) = "( Lambda " ++ x ++ ": " ++ (show y) ++ ")"
-    show (Apl t1 t2)  = (show t1) ++ "(" ++ (show t2) ++ ")"
-    show (Atr t1 t2)  = (show t1) ++ " = " ++ (show t2)
-    show (Seq t1 t2)  = (show t1) ++ ";\n" ++ (show t2)
-    show (While t1 t2) = "while( " ++ (show t1) ++ "){\n" ++ (show t2) ++ "}\n"
-    show (MethodCall t1 id t2) = "call(" ++ (show t1) ++ ", " ++ id ++ ", " ++ (show t2) ++ ")"
-    show (If t1 t2 t3) = "if( " ++ (show t1) ++ " ){\n" ++ (show t2) ++ "\n} else {\n" ++ (show t3) ++ "\n}\n"
-    show (New id) = "new " ++ id
-    show (InstanceOf t id) = "InstanceOf(" ++ (show t) ++ ", " ++ id ++ ")"
-    show (For id t1 t2 t3) = "for " ++ id ++ " in range(" ++ (show t1) ++ ", " ++ (show t2) ++ "){\n" ++ (show t3) ++ "}\n"
-    show (This) = "this"
-    show (AField t id) = (show t) ++ "." ++ id
+    show t = showIdent 0 t
 
 instance Show Definition where
     show (Def id term)  = "def " ++ (id) ++ " = " ++ (show term)
+
+instance Show Method where
+    show (Method id term)  = "Method  " ++ (id) ++ (show term)
 
 -------- Tests ---------
 -- Simple assertion helpers
@@ -556,3 +591,13 @@ main = do
     testWhile
     testInstanceOf
     testNew
+
+--- Exemplos ---
+
+ifexemplo = If (Sum (Var "x") (Lit 2)) (Atr (Var "y") (Lit 5)) (Atr (Var "y") (Lit 3))
+forexemplo = For "i" (Lit 0) (Sum (Var "X") (Lit 5)) ifexemplo
+
+
+contaMethod   = Method "Depositar" (Lam "valor" (Atr (AField This "Saldo") (Sum (AField This "Saldo") (Var "valor"))))
+classExemplo  = ClassDecl "Conta" ["Saldo"] [contaMethod]
+ambientesimples = intDecl [classExemplo]
