@@ -61,6 +61,7 @@ Note: requires GHC/GHCi 9.x. All tests are simple prints acting as smoke checks.
   constructors (e.g., `Lit`, `Var`) inside State/Heap.
 - Heap entries are `(Ref n, (ClassName, FieldsState))`, e.g. `(Ref 1, ("A", [("x", Num 10)]))`.
 - For multi-statement bodies, compose with `Seq`.
+- Call `runExample` to execute a sample program.
 
 ## License
 
