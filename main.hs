@@ -604,6 +604,55 @@ testNew = do
     -- Should create a new object in heap and attribute to a new variable
     expectInt "Should create a new object in heap and attribute to a new variable" (Ref 3, ("o3", Ref 3) : s, (Ref 3, ("C", [])) : h) e s h (Atr (Var "o3") (New "C"))
 
+testFor :: IO ()
+testFor = do
+    print $ "TEST For:"
+    let h = []
+        s = [("sum", Num 0)]
+        e = []
+    -- Should sum 1 + 2 + 3 = 6
+    expectInt "Should execute for loop from 1 to 4" 
+        (Num 0, [("sum", Num 6)], h) 
+        e s h 
+        (For "i" (Lit 1) (Lit 4) (Atr (Var "sum") (Sum (Var "sum") (Var "i"))))
+    
+    -- Loop with no interations, should not change sum
+    expectInt "Should not execute for loop when start >= end" 
+        (Num 0, [("sum", Num 0)], h) 
+        e [("sum", Num 0)] h 
+        (For "i" (Lit 5) (Lit 3) (Atr (Var "sum") (Sum (Var "sum") (Var "i"))))
+    
+    -- Loop with single iteration, should add 2
+    expectInt "Should execute for loop with single iteration" 
+        (Num 0, [("sum", Num 2)], h) 
+        e [("sum", Num 0)] h 
+        (For "i" (Lit 2) (Lit 3) (Atr (Var "sum") (Sum (Var "sum") (Var "i"))))
+
+testThis :: IO ()
+testThis = do
+    print $ "TEST This:"
+    let h = [(Ref 10, ("TestClass", [("x", Num 5)]))]
+        s = []
+        e_with_this = [("this", Ref 10)]
+        e_without_this = []
+    
+    -- Test 1: This should return the current object reference from environment
+    expectInt "Should return the current object reference from environment" 
+        (Ref 10, s, h) e_with_this s h This
+    
+    -- Test 2: This should return Error if 'this' not found
+    expectInt "Should return Error if 'this' not found" 
+        (Error "Var not found this", s, h) e_without_this s h This
+    
+    -- Test 3: Access field through This
+    expectInt "Should access field through This" 
+        (Num 5, s, h) e_with_this s h (AField This "x")
+    
+    -- Test 4: Modify field through This
+    expectInt "Should modify field through This" 
+        (Num 10, s, [(Ref 10, ("TestClass", [("x", Num 10)]))]) e_with_this s h (Atr (AField This "x") (Lit 10))
+
+
 -- | Execute all tests
 main :: IO ()
 main = do
@@ -629,6 +678,8 @@ main = do
     testWhile
     testInstanceOf
     testNew
+    testFor
+    testThis
 
 --------------- Exemplos ------------------
 
@@ -648,7 +699,7 @@ doubleFunc = FunDecl "double" (Lam "x" (Mult (Var "x") (Lit 2)))
 
 exampleAmbienteContaFromDecl = intDecl [contaClass]
 exampleAmbienteFuncsFromDecl = intDecl [squareFunc, addTenFunc, doubleFunc]
-baseEnv = [ ("<", ltFunction) ] ++ exampleAmbienteContaFromDecl ++ exampleAmbienteFuncsFromDecl -- inclui a função <, a classe Conta e as funções globais
+baseEnv = [ ("<", ltFunction), (">", gtFunction) ] ++ exampleAmbienteContaFromDecl ++ exampleAmbienteFuncsFromDecl -- inclui a função < e >, a classe Conta e as funções globais
 
 contaAtrCt = Atr (Var "ct") (New "Conta")
 contaSeeSaldo = AField (Var "ct") "Saldo"
@@ -694,6 +745,16 @@ lessThan v1 s h = (Fun lessThanSecond, s, h)
         _                -> (Error "Invalid operands to <", s', h')
 ltFunction = Fun lessThan
 
+greaterThan :: Value -> State -> Heap -> (Value, State, Heap)
+greaterThan v1 s h = (Fun greaterThanSecond, s, h)
+  where
+    greaterThanSecond :: Value -> State -> Heap -> (Value, State, Heap)
+    greaterThanSecond v2 s' h' = 
+      case (v1, v2) of
+        (Num n1, Num n2) -> (Num (if n1 > n2 then 1 else 0), s', h')
+        _                -> (Error "Invalid operands to >", s', h')
+gtFunction = Fun greaterThan
+
 -- Programas de exemplo para testar funções definidas
 testSquareProgram = Apl (Var "square") (Lit 5)  -- deve retornar 25
 testAddTenProgram = Apl (Var "addTen") (Lit 7)  -- deve retornar 17
@@ -730,3 +791,53 @@ testDefFunctions = do
 
     let (result4, _, _) = runInBaseEnv testComposedProgram
     putStrLn $ "square(addTen(2)) = " ++ show result4 ++ " (expected: 144.0)"
+
+-- Teste mais visual do funcionamento do This
+testThisVisual :: IO ()
+testThisVisual = do
+    putStrLn "\n1. Criando um objeto Conta..."
+    let (ref, state1, heap1) = runInBaseEnv (Atr (Var "minhaConta") (New "Conta"))
+    putStrLn $ "   Estado: " ++ show state1
+    putStrLn $ "   Heap: " ++ show heap1
+    
+    putStrLn "\n2. Verificando saldo inicial (usando This indiretamente)..."
+    let (saldo_inicial, state2, heap2) = runInBaseEnv (Seq (Atr (Var "minhaConta") (New "Conta")) (AField (Var "minhaConta") "Saldo"))
+    putStrLn $ "   Saldo inicial: " ++ show saldo_inicial
+    
+    putStrLn "\n3. Chamando método Depositar(50) - This aponta para minhaConta..."
+    let programa_deposito = Seq (Atr (Var "minhaConta") (New "Conta")) (MethodCall (Var "minhaConta") "Depositar" (Lit 50))
+    let (resultado_deposito, state3, heap3) = runInBaseEnv programa_deposito
+    putStrLn $ "   Retorno do método: " ++ show resultado_deposito
+    putStrLn $ "   Estado após depósito: " ++ show state3
+    case lookup "minhaConta" state3 of
+        Just ref@(Ref _) -> do
+            let (_, campos) = getObj ref heap3
+            putStrLn $ "   Saldo após depósito: " ++ show (lookup "Saldo" campos)
+        _ -> putStrLn "   Erro: objeto não encontrado"
+    
+    putStrLn "\n4. Múltiplos depósitos para ver This em ação..."
+    let programa_multiplos = Seq (Atr (Var "conta") (New "Conta")) 
+                           (Seq (MethodCall (Var "conta") "Depositar" (Lit 100))
+                           (Seq (MethodCall (Var "conta") "Depositar" (Lit 75)) 
+                                (AField (Var "conta") "Saldo")))
+    let (saldo_final, state4, heap4) = runInBaseEnv programa_multiplos
+    putStrLn $ "   Saldo final após 100 + 75: " ++ show saldo_final ++ " (esperado: 175)"
+    
+    putStrLn "\n5. Testando DepositarSeguro com valor negativo..."
+    let programa_seguro_neg = Seq (Atr (Var "contaSegura") (New "Conta"))
+                             (Seq (MethodCall (Var "contaSegura") "DepositarSeguro" (Lit (-50)))
+                                  (AField (Var "contaSegura") "Saldo"))
+    let (saldo_seguro_neg, _, _) = runInBaseEnv programa_seguro_neg
+    putStrLn $ "   Saldo após depósito negativo: " ++ show saldo_seguro_neg ++ " (esperado: 0)"
+    
+    putStrLn "\n6. Testando DepositarSeguro com valor positivo..."
+    let programa_seguro_pos = Seq (Atr (Var "contaSegura2") (New "Conta"))
+                             (Seq (MethodCall (Var "contaSegura2") "DepositarSeguro" (Lit 75))
+                                  (AField (Var "contaSegura2") "Saldo"))
+    let (saldo_seguro_pos, _, _) = runInBaseEnv programa_seguro_pos
+    putStrLn $ "   Saldo após depósito seguro positivo: " ++ show saldo_seguro_pos ++ " (esperado: 75)"
+    
+    putStrLn "\n7. Demonstrando como This NÃO funciona fora de métodos..."
+    let (erro_this, _, _) = int [] [] [] This
+    putStrLn $ "   Tentativa de usar This fora de método: " ++ show erro_this
+    
