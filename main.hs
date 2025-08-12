@@ -186,10 +186,13 @@ int e s h (For id start end body) =
 int e s h (New class_id) =
     let
         new_ref = length h + 1
-        (ClassDef atributes  _)  = search class_id e
-        new_obj = (class_id, idToEmptyState atributes) -- create new object with empty state
+        class_def = search class_id e
     in
-    (Ref new_ref, s, h ++ [(Ref new_ref, new_obj)])
+    case class_def of
+        (ClassDef attributes methods) -> 
+            let new_obj = (class_id, idToEmptyState attributes) -- create new object with empty state
+            in (Ref new_ref, s, h ++ [(Ref new_ref, new_obj)])
+        _ -> (Error ("Class not found: " ++ class_id), s, h)
 
 --  MethodCall Term Id Term
 int e s h (MethodCall t1 id t2) = (retVal, s2, h3)
@@ -598,11 +601,12 @@ testNew = do
     print $ "TEST New:"
     let h = [(Ref 10, ("A", [("x", Num 5)])), (Ref 20, ("B", [("y", Num 7)]))]
         s = [("o1", Ref 10)]
-        e = [("o2", Ref 20)]
+        e = [("o2", Ref 20), ("C", ClassDef ["x"] [Method "init" (Lam "x" (Atr (AField This "x") (Var "x")))])]
     -- Should create a new object in heap
-    expectInt "Should create a new object in heap" (Ref 3, s, (Ref 3, ("C", [])) : h) e s h (New "C")
+    expectInt "Should create a new object in heap" (Ref 3, s, (Ref 3, ("C",[("x", Num 0)])) : h) e s h (New "C")
     -- Should create a new object in heap and attribute to a new variable
-    expectInt "Should create a new object in heap and attribute to a new variable" (Ref 3, ("o3", Ref 3) : s, (Ref 3, ("C", [])) : h) e s h (Atr (Var "o3") (New "C"))
+    expectInt "Should create a new object in heap and attribute to a new variable" (Ref 3, ("o3", Ref 3) : s, (Ref 3, ("C", [("x", Num 0)])) : h) e s h (Atr (Var "o3") (New "C"))
+    expectInt "Should return class not found error" (Error "Class not found: D", s, h) e s h (New "D")
 
 testFor :: IO ()
 testFor = do
@@ -841,4 +845,4 @@ testThisVisual = do
     putStrLn "\n7. Demonstrando como This NÃO funciona fora de métodos..."
     let (erro_this, _, _) = int [] [] [] This
     putStrLn $ "   Tentativa de usar This fora de método: " ++ show erro_this
-    
+
