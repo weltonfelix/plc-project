@@ -406,7 +406,7 @@ testSearch = do
     expectValue "Should be able to find function variables" 
         (Fun (\v s h -> (Num 42, s, h))) (search "x" [("x", Fun (\v s h -> (Num 42, s, h)))])
     expectValue "Should return Error for unknown variable" 
-        (Error "Var not found") (search "y" [("x", Num 5)])
+        (Error "Var not found y") (search "y" [("x", Num 5)])
 
 testGetObj :: IO ()
 testGetObj = do
@@ -492,7 +492,7 @@ testVar = do
     print $ "TEST Var:"
     expectInt "Should be able to find Var in state" (Num 5, [("x", Num 5)], []) [] [("x", Num 5)] [] (Var "x")
     expectInt "Should be able to find Var in environment" (Ref 10, [], []) [("x", Ref 10)] [] [] (Var "x")
-    expectInt "Should return Error if Var not found" (Error "Var not found", [("y", Num 5)], []) [] [("y", Num 5)] [] (Var "x")
+    expectInt "Should return Error if Var not found" (Error "Var not found x", [("y", Num 5)], []) [] [("y", Num 5)] [] (Var "x")
 
 testLit :: IO ()
 testLit = do
@@ -504,13 +504,13 @@ testSum :: IO ()
 testSum = do
     print $ "TEST Sum:"
     expectInt "Should be able to return Sum (Lit 5) (Lit 3) value" (Num 8, [], []) [] [] [] (Sum (Lit 5) (Lit 3))
-    expectInt "Should return Error if Var not found" (Error "Var not found", [], []) [] [] [] (Sum (Lit 5) (Var "x"))
+    expectInt "Should return Error if Var not found" (Error "Var not found x", [], []) [] [] [] (Sum (Lit 5) (Var "x"))
 
 testMult :: IO ()
 testMult = do
     print $ "TEST Mult:"
     expectInt "Should be able to return Mult (Lit 5) (Lit 3) value" (Num 15, [], []) [] [] [] (Mult (Lit 5) (Lit 3))
-    expectInt "Should return Error if Var not found" (Error "Var not found", [], []) [] [] [] (Mult (Lit 5) (Var "x"))
+    expectInt "Should return Error if Var not found" (Error "Var not found x", [], []) [] [] [] (Mult (Lit 5) (Var "x"))
 
 testAField :: IO ()
 testAField = do
@@ -520,8 +520,8 @@ testAField = do
         e = [("o2", Ref 20)]
     expectInt "Should be able to return a number from a state variable object" (Num 5, s, h) e s h (AField (Var "o1") "x")
     expectInt "Should be able to return a number from an environment variable object" (Num 7, s, h) e s h (AField (Var "o2") "y")
-    expectInt "Should return Error if object not found" (Error "Var not found", s, h) e s h (AField (Var "y") "x")
-    expectInt "Should return Error if property not exists" (Error "Var not found", s, h) e s h (AField (Var "o1") "y")
+    expectInt "Should return Error if object not found" (Error "Var not found x", s, h) e s h (AField (Var "y") "x")
+    expectInt "Should return Error if property not exists" (Error "Var not found y", s, h) e s h (AField (Var "o1") "y")
 
 testAtr :: IO ()
 testAtr = do
