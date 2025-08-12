@@ -677,9 +677,10 @@ main = do
     testIf
     testWhile
     testInstanceOf
-    testNew
     testFor
     testThis
+    testNew
+
 
 --------------- Exemplos ------------------
 
