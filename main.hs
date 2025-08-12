@@ -46,7 +46,7 @@ data Term = Var Id
            | This
            | AField Term Id
            | TermVal Value -- for method calls parameters
-           | EmptyTerm -- Error
+           | EmptyTerm -- do nothing 
 
 
 data Definition = Def Id Term
@@ -192,7 +192,7 @@ int e s h (New class_id) =
     (Ref new_ref, s, h ++ [(Ref new_ref, new_obj)])
 
 --  MethodCall Term Id Term
-int e s h (MethodCall t1 id t2) = (retVal, s2, h4)
+int e s h (MethodCall t1 id t2) = (retVal, s2, h3)
                                 where   (obj, s1, h1) = int e s h t1  -- get object reference from variable
                                 --- get method and object state
                                         (class_obj, state_obj1) = getObj obj h1
@@ -203,9 +203,7 @@ int e s h (MethodCall t1 id t2) = (retVal, s2, h4)
                                 --- create environment with 'this' pointing to current object
                                         method_env = ("this", obj) : e
                                 --- apply the method to the object state and parameter with 'this' in environment
-                                        (retVal, state_obj2, h3) = int method_env state_obj1 h2 (Apl method (TermVal v))
-                                --- write the updated state back to the heap
-                                        (h4) = wrho obj (class_obj, state_obj2) h3
+                                        (retVal, _, h3) = int method_env state_obj1 h2 (Apl method (TermVal v))
 
 -- This: returns the current object reference
 int e s h This = (search "this" e, s, h)
@@ -634,14 +632,13 @@ main = do
 
 --------------- Exemplos ------------------
 
-contaMethod = Method "Depositar" (Lam "valor" (Atr (Var "Saldo") (Sum (Var "Saldo") (Var "valor"))))
+contaMethod = Method "Depositar" (Lam "valor" (Atr (AField This "Saldo") (Sum (AField This "Saldo") (Var "valor"))))
 contaMtSegu = Method "DepositarSeguro" (Lam "valor" ( 
     If (Apl (Apl (Var ">") (Var "valor")) (Lit 0))              ---if valor > 0
         (Atr (AField This "Saldo") (Sum (AField This "Saldo") (Var "valor")))   -- this.saldo += valor
         EmptyTerm  --empty else
             ))
 
-contaMethodThis = Method "Depositar" (Lam "valor" (Atr (AField This "Saldo") (Sum (AField This "Saldo") (Var "valor"))))
 contaClass = ClassDecl "Conta" ["Saldo"] [contaMethod, contaMtSegu]
 
 -- Exemplos de definições de funções globais
@@ -664,6 +661,7 @@ whileTerm = Seq (Atr (Var "i") (Lit 1))                    -- i = 1
             (Atr (Var "i") (Sum (Var "i") (Lit 1))))       --   i = i + 1
         )
 contaSeqPrograma = Seq contaAtrCt ( Seq whileTerm contaSeeSaldo )
+contaDebugPrograma = Seq contaAtrCt (MethodCall (Var "ct") "Depositar" (Lit 100))
 
 --------------------------------------------------------------------
 runExample :: IO ()
